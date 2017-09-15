@@ -1,0 +1,206 @@
+---
+title: "Practical Machine Learning-Final Project"
+author: "MamidiSudheer"
+date: "14 September 2017"
+output: html_document
+---    
+  
+The goal of project is to predict the manner in which people have done exercise.   
+  
+  
+      
+####Setting up Environment
+
+``` {r}
+library(caret)
+library(rpart)
+library(rattle)
+library(randomForest)
+library(rpart.plot)
+library(gbm)
+library(ggplot2)
+```
+
+####Importing Data  
+
+```{r}
+training <- read.csv("pml-training.csv",stringsAsFactors = TRUE,header=T)  
+testing <- read.csv("pml-testing.csv",stringsAsFactors = TRUE,header=T)  
+```
+
+```{r}
+dim(training)
+```  
+
+####Data Cleaning   
+
+Calculating NA count in each column
+
+```{r}
+#Replace empty values as NA and computing  NA count in all columns
+training[training == ""] <- NA  
+Col_NA <- colSums(is.na(training))  
+
+table(Col_NA)
+```
+
+As the proportion of NA's is very high in some columns, we shall remove those columns
+
+```{r}
+#Only keep those columns where no NA is present
+training1 <- training[,Col_NA==0]  
+testing1 <- testing[,Col_NA==0]  
+
+dim(training1)  
+```
+
+
+```{r}
+#Remove first 7 columns as they are not involved in readings
+training_final <- training1[,-c(1:7)]
+testing_final <- testing1[,-c(1:7)]
+```
+  
+
+####Splitting Data  
+
+```{r}
+#Create a validation set     
+set.seed(1234)  
+inTrain  <- createDataPartition(training_final$classe, p=0.7, list=FALSE)  
+Train <- training_final[inTrain, ]  
+Test  <- training_final[-inTrain, ] 
+
+dim(Train)
+```
+  
+  
+  
+####Model- Decision Tree
+
+Fitting a decision tree on Traindata.     
+  
+    
+model_rpart <- train(classe~., data = Train, method="rpart")   
+  
+
+```{r}
+fancyRpartPlot(model_rpart$finalModel)
+```
+
+Predicting using this model on validation data
+
+```{r}
+
+predict_decisiontree <- predict(model_rpart,Test)
+
+cf_rpar <- confusionMatrix(predict_decisiontree,Test$classe)
+
+#Accuracy
+cf_rpar$overall[1]
+
+
+```
+
+```{r}
+##set up the parallel processing 
+
+library(parallel)
+h <-makeCluster(detectCores()-1)
+```
+
+  
+####RandomForest
+
+Fitting a  predictive modelusing Random Forest algorithm. Used 5-fold cross validation when applying the algorithm
+
+```{r}
+library(randomForest)
+set.seed(1234)
+
+#Using cross-validation as control
+Control <- trainControl(method='cv', number = 5)
+```
+  
+  
+model_rf <- train(classe~., data = Train, method="rf",trControl=Control,allowParallel =TRUE)       
+  
+    
+Then, we shall estimate the performance of the model on the validation data set
+
+```{r}
+#Predicting on test set
+predict_rf <- predict(model_rf,Test)
+
+cf_rf <- confusionMatrix(predict_rf,Test$classe)
+
+confusionMatrix(predict_rf,Test$classe)
+
+#Accuracy
+cf_rf$overall[1]
+
+
+#Variable Importance plot 
+varImpPlot(model_rf$finalModel)
+```
+  
+    
+So, accuracy is around 99.5% and estimated out of sample error around 0.5%  
+  
+      
+####GBM
+
+Now, we shall train the data using gradient boosting. Cross validation of 5 folds is done  
+
+``` {r}
+library(gbm)  
+Control <- trainControl(method='cv', number = 5)   
+set.seed(1256)    
+```  
+
+model_gbm <-   train(classe~., data = Train,  method = "gbm", trControl = Control)
+
+```{r}
+plot(model_gbm)
+```
+
+Estimating using gbm on validation data 
+
+```{r}
+predict_gbm <- predict(model_gbm,Test)
+
+cf_gbm <- confusionMatrix(predict_gbm,Test$classe)
+
+
+ cf_gbm$overall[1]
+ 
+```
+
+Accuracy is around 96.4% but less than RandomForest.
+So final prediction is done by RandomForest  
+
+
+####Prediction on Test Set
+
+```{r}
+predict_final <- predict(model_rf,testing_final)
+predict_final 
+```
+  
+       
+
+
+####Appendix
+
+```{r}
+library(corrplot)
+corrplot(cor(Train[, -length(names(Train))]),method="color")
+```
+
+  
+####Data Source
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv   
+  
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+
